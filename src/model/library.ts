@@ -333,4 +333,98 @@ export const DEFS: Record<CompType, CompDef> = {
     },
     valueText: (c) => `${shortEng(num(c.props.ratedVoltage), 'V')}/${shortEng(num(c.props.ratedPower), 'W')}`,
   },
+  ammeter: {
+    type: 'ammeter',
+    name: 'Ammeter',
+    category: 'Instruments',
+    prefix: 'AM',
+    terminals: T2,
+    terminalNames: ['+', '−'],
+    defaults: {},
+    params: [],
+    edu: {
+      what: 'An ideal ammeter measures the current flowing through it. It must be placed in series with the branch being measured.',
+      equation: 'I measured (R_ammeter = 0, V_drop = 0)',
+      unit: 'Ampere (A) — 1 A is 1 coulomb per second.',
+      effect: 'Zero-resistance meter: does not disturb the circuit. Positive reading means current enters the + terminal.',
+    },
+    valueText: () => '',
+  },
+  voltmeter: {
+    type: 'voltmeter',
+    name: 'Voltmeter',
+    category: 'Instruments',
+    prefix: 'VM',
+    terminals: T2,
+    terminalNames: ['+', '−'],
+    defaults: {},
+    params: [],
+    edu: {
+      what: 'An ideal voltmeter measures the potential difference between its two probes. Place it in parallel with the element.',
+      equation: 'V = V(+) − V(−)   (R_voltmeter → ∞)',
+      unit: 'Volt (V).',
+      effect: 'Infinite-resistance meter: draws no current and does not load the circuit.',
+    },
+    valueText: () => '',
+  },
+  npn: {
+    type: 'npn',
+    name: 'NPN Transistor',
+    category: 'Semiconductors',
+    prefix: 'Q',
+    terminals: [
+      { x: -40, y: 0 },
+      { x: 20, y: -40 },
+      { x: 20, y: 40 },
+    ],
+    terminalNames: ['B', 'C', 'E'],
+    defaults: { beta: 100, betaR: 1, saturationCurrent: 1e-14 },
+    params: [
+      { key: 'beta', label: 'Forward gain βF (hFE)', kind: 'number', positive: true },
+      { key: 'betaR', label: 'Reverse gain βR', kind: 'number', positive: true },
+      { key: 'saturationCurrent', label: 'Saturation current Is', unit: 'A', kind: 'number', positive: true },
+    ],
+    edu: {
+      what: 'A bipolar junction transistor uses a small base current to control a larger collector current. Modeled with the Ebers–Moll equations.',
+      equation: 'Ic ≈ β·Ib (active)      Ie = Ic + Ib      Vbe ≈ 0.65 V',
+      unit: 'Currents in Amperes (A); β is dimensionless.',
+      effect: 'Acts as an amplifier in the active region or as a switch when driven into saturation (Vce ≈ 0.1–0.2 V).',
+    },
+    valueText: (c) => `β=${num(c.props.beta)}`,
+  },
 };
+
+export const LIBRARY_ORDER: CompType[] = [
+  'resistor',
+  'capacitor',
+  'inductor',
+  'dcsource',
+  'acsource',
+  'battery',
+  'ground',
+  'diode',
+  'led',
+  'npn',
+  'switch',
+  'spdt',
+  'pushbutton',
+  'bulb',
+  'ammeter',
+  'voltmeter',
+];
+
+export function terminalPositions(c: Component): Point[] {
+  return DEFS[c.type].terminals.map((t) => {
+    const r = rotatePoint(t, c.rot);
+    return { x: c.x + r.x, y: c.y + r.y };
+  });
+}
+
+export function nextLabel(type: CompType, existing: Component[]): string {
+  const prefix = DEFS[type].prefix;
+  if (type === 'ground') return 'GND';
+  let n = 1;
+  const used = new Set(existing.map((c) => c.label));
+  while (used.has(`${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+}
