@@ -168,3 +168,145 @@ export function pnjlim(vnew: number, vold: number, vt: number, vcrit: number): [
   }
   return [vnew, false];
 }
+
+export abstract class Element {
+  branches = 0;
+  /** first branch index (assigned by the simulator) */
+  b0 = 0;
+  nonlinear = false;
+  /** set during stamping if junction voltage limiting was applied */
+  limited = false;
+  /** number of non-ground nodes (offset of the branch-current block in x) */
+  nn = 0;
+  constructor(
+    public comp: Component,
+    public nodes: number[],
+  ) {}
+  get id() {
+    return this.comp.id;
+  }
+  v(x: Float64Array, k: number) {
+    const n = this.nodes[k];
+    return n === 0 ? 0 : x[n - 1];
+  }
+  abstract stamp(s: Sys, ctx: StampCtx): void;
+  stampAC(_s: CSys, _w: number): void {}
+  /** called once a time step has converged */
+  accept(_x: Float64Array, _ctx: StampCtx): void {}
+  /** reset dynamic state to initial conditions */
+  reset(): void {}
+  getState(): unknown {
+    return null;
+  }
+  setState(_s: unknown): void {}
+  /** currents flowing INTO the element at each terminal */
+  abstract terminalCurrents(x: Float64Array, ctx: StampCtx): number[];
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const ic = this.terminalCurrents(x, ctx);
+    let p = 0;
+    for (let k = 0; k < this.nodes.length; k++) p += this.v(x, k) * ic[k];
+    return { v: this.v(x, 0) - this.v(x, 1), i: ic[0], p };
+  }
+  /** AC: returns [v, i] phasors as [vr, vi, ir, ii] */
+  readingAC(xr: Float64Array, xi: Float64Array, w: number): [number, number, number, number] {
+    const vr = this.cv(xr, 0) - this.cv(xr, 1);
+    const vi = this.cv(xi, 0) - this.cv(xi, 1);
+    const [ir, ii] = this.currentAC(xr, xi, w);
+    return [vr, vi, ir, ii];
+  }
+  currentAC(_xr: Float64Array, _xi: Float64Array, _w: number): [number, number] {
+    return [0, 0];
+  }
+  cv(x: Float64Array, k: number) {
+    const n = this.nodes[k];
+    return n === 0 ? 0 : x[n - 1];
+  }
+}
+
+// ---------------------------------------------------------------- resistive
+
+export class ResistiveElement extends Element {
+  conductance(): number {
+    const c = this.comp;
+    switch (c.type) {
+      case 'resistor':
+        return 1 / Math.max(num(c.props.resistance, 1000), 1e-9);
+      case 'bulb': {
+        const v = num(c.props.ratedVoltage, 12);
+        const p = Math.max(num(c.props.ratedPower, 5), 1e-9);
+        return p / (v * v);
+      }
+      case 'switch':
+        return c.props.closed ? 1 / Math.max(num(c.props.onResistance, 0.01), 1e-6) : G_OFF;
+      case 'pushbutton':
+        return c.props.__pressed ? 1 / Math.max(num(c.props.onResistance, 0.01), 1e-6) : G_OFF;
+      default:
+        return G_OFF;
+    }
+  }
+  stamp(s: Sys) {
+    s.G(this.nodes[0], this.nodes[1], this.conductance());
+  }
+  stampAC(s: CSys) {
+    s.Y(this.nodes[0], this.nodes[1], this.conductance(), 0);
+  }
+  terminalCurrents(x: Float64Array) {
+    const i = (this.v(x, 0) - this.v(x, 1)) * this.conductance();
+    return [i, -i];
+  }
+  currentAC(xr: Float64Array, xi: Float64Array): [number, number] {
+    const g = this.conductance();
+    return [(this.cv(xr, 0) - this.cv(xr, 1)) * g, (this.cv(xi, 0) - this.cv(xi, 1)) * g];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const r = super.reading(x, ctx);
+    if (this.comp.type === 'bulb') {
+      const rated = Math.max(num(this.comp.props.ratedPower, 5), 1e-9);
+      r.extra = { brightness: Math.min(r.p / rated, 2), resistance: 1 / this.conductance() };
+    }
+    if (this.comp.type === 'resistor') {
+      const rating = num(this.comp.props.powerRating, 0.25);
+      r.extra = { ratingUse: r.p / rating };
+    }
+    return r;
+  }
+}
+
+export class SpdtElement extends Element {
+  gs(): [number, number] {
+    const on = 1 / Math.max(num(this.comp.props.onResistance, 0.01), 1e-6);
+    return this.comp.props.position === 'B' ? [G_OFF, on] : [on, G_OFF];
+  }
+  stamp(s: Sys) {
+    const [ga, gb] = this.gs();
+    s.G(this.nodes[0], this.nodes[2], ga);
+    s.G(this.nodes[1], this.nodes[2], gb);
+  }
+  stampAC(s: CSys) {
+    const [ga, gb] = this.gs();
+    s.Y(this.nodes[0], this.nodes[2], ga, 0);
+    s.Y(this.nodes[1], this.nodes[2], gb, 0);
+  }
+  terminalCurrents(x: Float64Array) {
+    const [ga, gb] = this.gs();
+    const ia = (this.v(x, 0) - this.v(x, 2)) * ga;
+    const ib = (this.v(x, 1) - this.v(x, 2)) * gb;
+    return [ia, ib, -(ia + ib)];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const ic = this.terminalCurrents(x);
+    const k = this.comp.props.position === 'B' ? 1 : 0;
+    let p = 0;
+    for (let j = 0; j < 3; j++) p += this.v(x, j) * ic[j];
+    void ctx;
+    return { v: this.v(x, k) - this.v(x, 2), i: ic[k], p, extra: { position: String(this.comp.props.position) } };
+  }
+  readingAC(xr: Float64Array, xi: Float64Array): [number, number, number, number] {
+    const [ga, gb] = this.gs();
+    const k = this.comp.props.position === 'B' ? 1 : 0;
+    const g = k ? gb : ga;
+    const vr = this.cv(xr, k) - this.cv(xr, 2);
+    const vi = this.cv(xi, k) - this.cv(xi, 2);
+    return [vr, vi, vr * g, vi * g];
+  }
+}
