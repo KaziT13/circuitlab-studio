@@ -310,3 +310,139 @@ export class SpdtElement extends Element {
     return [vr, vi, vr * g, vi * g];
   }
 }
+
+// ---------------------------------------------------------------- reactive
+
+export class CapacitorElement extends Element {
+  vPrev = 0;
+  iPrev = 0;
+  get C() {
+    return Math.max(num(this.comp.props.capacitance, 1e-6), 1e-18);
+  }
+  reset() {
+    this.vPrev = num(this.comp.props.initialVoltage, 0);
+    this.iPrev = 0;
+  }
+  getState() {
+    return { vPrev: this.vPrev, iPrev: this.iPrev };
+  }
+  setState(s: { vPrev: number; iPrev: number }) {
+    this.vPrev = s.vPrev;
+    this.iPrev = s.iPrev;
+  }
+  companion(ctx: StampCtx): [number, number] {
+    // i = geq·v − ieq
+    if (ctx.method === 'be') {
+      const g = this.C / ctx.h;
+      return [g, g * this.vPrev];
+    }
+    const g = (2 * this.C) / ctx.h;
+    return [g, g * this.vPrev + this.iPrev];
+  }
+  stamp(s: Sys, ctx: StampCtx) {
+    const [a, b] = this.nodes;
+    if (ctx.mode === 'dc' || ctx.testId === this.id) {
+      s.G(a, b, GMIN);
+      return;
+    }
+    const [g, ieq] = this.companion(ctx);
+    s.G(a, b, g);
+    s.I(a, b, -ieq);
+  }
+  stampAC(s: CSys, w: number) {
+    s.Y(this.nodes[0], this.nodes[1], GMIN, w * this.C);
+  }
+  /** current reported for the last accepted time point (state already advanced by accept) */
+  terminalCurrents(x: Float64Array, ctx: StampCtx) {
+    if (ctx.mode === 'dc') {
+      const v = this.v(x, 0) - this.v(x, 1);
+      return [v * GMIN, -v * GMIN];
+    }
+    return [this.iPrev, -this.iPrev];
+  }
+  accept(x: Float64Array, ctx: StampCtx) {
+    const v = this.v(x, 0) - this.v(x, 1);
+    const [g, ieq] = this.companion(ctx); // uses the previous state
+    this.iPrev = g * v - ieq;
+    this.vPrev = v;
+  }
+  currentAC(xr: Float64Array, xi: Float64Array, w: number): [number, number] {
+    const vr = this.cv(xr, 0) - this.cv(xr, 1);
+    const vi = this.cv(xi, 0) - this.cv(xi, 1);
+    const B = w * this.C;
+    return [-B * vi, B * vr];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const r = super.reading(x, ctx);
+    const rating = num(this.comp.props.voltageRating, 50);
+    r.extra = { energy: 0.5 * this.C * r.v * r.v, charge: this.C * r.v, ratingUse: Math.abs(r.v) / rating };
+    return r;
+  }
+}
+
+export class InductorElement extends Element {
+  branches = 1;
+  iPrev = 0;
+  vPrev = 0;
+  get L() {
+    return Math.max(num(this.comp.props.inductance, 1e-3), 1e-15);
+  }
+  reset() {
+    this.iPrev = num(this.comp.props.initialCurrent, 0);
+    this.vPrev = 0;
+  }
+  getState() {
+    return { iPrev: this.iPrev, vPrev: this.vPrev };
+  }
+  setState(s: { iPrev: number; vPrev: number }) {
+    this.iPrev = s.iPrev;
+    this.vPrev = s.vPrev;
+  }
+  stamp(s: Sys, ctx: StampCtx) {
+    const [a, b] = this.nodes;
+    if (ctx.testId === this.id) {
+      // removed: force branch current to zero
+      const k = s.br(this.b0);
+      s.add(s.n(a), k, 1);
+      s.add(s.n(b), k, -1);
+      s.add(k, k, 1);
+      return;
+    }
+    if (ctx.mode === 'dc') {
+      s.V(a, b, this.b0, 0);
+      return;
+    }
+    if (ctx.method === 'be') {
+      const req = this.L / ctx.h;
+      s.V(a, b, this.b0, -req * this.iPrev, req);
+    } else {
+      const req = (2 * this.L) / ctx.h;
+      s.V(a, b, this.b0, -req * this.iPrev - this.vPrev, req);
+    }
+  }
+  stampAC(s: CSys, w: number) {
+    s.V(this.nodes[0], this.nodes[1], this.b0, 0, 0, 0, w * this.L);
+  }
+  terminalCurrents(x: Float64Array) {
+    const i = x[this.nodesLen() + this.b0];
+    return [i, -i];
+  }
+  /** offset of the branch block — injected by the simulator */
+  nn = 0;
+  nodesLen() {
+    return this.nn;
+  }
+  accept(x: Float64Array) {
+    this.iPrev = x[this.nn + this.b0];
+    this.vPrev = this.v(x, 0) - this.v(x, 1);
+  }
+  currentAC(xr: Float64Array, xi: Float64Array): [number, number] {
+    return [xr[this.nn + this.b0], xi[this.nn + this.b0]];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const r = super.reading(x, ctx);
+    const rating = num(this.comp.props.currentRating, 1);
+    r.extra = { energy: 0.5 * this.L * r.i * r.i, ratingUse: Math.abs(r.i) / rating };
+    return r;
+  }
+}
