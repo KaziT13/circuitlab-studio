@@ -446,3 +446,109 @@ export class InductorElement extends Element {
     return r;
   }
 }
+
+// ---------------------------------------------------------------- sources
+
+export class VoltageSourceElement extends Element {
+  nn = 0;
+  constructor(comp: Component, nodes: number[]) {
+    super(comp, nodes);
+    this.branches = this.rint() > 0 ? 0 : 1;
+  }
+  rint() {
+    return Math.max(num(this.comp.props.internalResistance, 0), 0);
+  }
+  value(ctx: StampCtx): number {
+    if (ctx.zeroSources) return 0;
+    const scale = ctx.srcScale ?? 1;
+    const c = this.comp;
+    if (c.type === 'acsource') {
+      const off = num(c.props.offset, 0);
+      if (ctx.mode === 'dc') return off * scale;
+      const A = num(c.props.amplitude, 0);
+      const f = num(c.props.frequency, 60);
+      const ph = (num(c.props.phase, 0) * Math.PI) / 180;
+      return (off + A * Math.sin(2 * Math.PI * f * ctx.t + ph)) * scale;
+    }
+    return num(c.props.voltage, 0) * scale;
+  }
+  phasor(): [number, number] {
+    if (this.comp.type !== 'acsource') return [0, 0];
+    const A = num(this.comp.props.amplitude, 0);
+    const ph = (num(this.comp.props.phase, 0) * Math.PI) / 180;
+    return [A * Math.cos(ph), A * Math.sin(ph)];
+  }
+  stamp(s: Sys, ctx: StampCtx) {
+    const [p, n] = this.nodes;
+    const V = this.value(ctx);
+    const r = this.rint();
+    if (r > 0) {
+      s.G(p, n, 1 / r);
+      s.I(n, p, V / r);
+    } else s.V(p, n, this.b0, V);
+  }
+  stampAC(s: CSys) {
+    const [p, n] = this.nodes;
+    const [vr, vi] = this.phasor();
+    const r = this.rint();
+    if (r > 0) {
+      s.Y(p, n, 1 / r, 0);
+      s.I(n, p, vr / r, vi / r);
+    } else s.V(p, n, this.b0, vr, vi);
+  }
+  terminalCurrents(x: Float64Array, ctx: StampCtx) {
+    const r = this.rint();
+    let i: number;
+    if (r > 0) i = (this.v(x, 0) - this.v(x, 1) - this.value(ctx)) / r;
+    else i = x[this.nn + this.b0];
+    return [i, -i];
+  }
+  currentAC(xr: Float64Array, xi: Float64Array): [number, number] {
+    const r = this.rint();
+    if (r > 0) {
+      const [vr, vi] = this.phasor();
+      return [(this.cv(xr, 0) - this.cv(xr, 1) - vr) / r, (this.cv(xi, 0) - this.cv(xi, 1) - vi) / r];
+    }
+    return [xr[this.nn + this.b0], xi[this.nn + this.b0]];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const r = super.reading(x, ctx);
+    r.extra = { emf: this.value(ctx), delivered: -r.p };
+    return r;
+  }
+}
+
+export class AmmeterElement extends Element {
+  branches = 1;
+  nn = 0;
+  stamp(s: Sys) {
+    s.V(this.nodes[0], this.nodes[1], this.b0, 0);
+  }
+  stampAC(s: CSys) {
+    s.V(this.nodes[0], this.nodes[1], this.b0, 0, 0);
+  }
+  terminalCurrents(x: Float64Array) {
+    const i = x[this.nn + this.b0];
+    return [i, -i];
+  }
+  currentAC(xr: Float64Array, xi: Float64Array): [number, number] {
+    return [xr[this.nn + this.b0], xi[this.nn + this.b0]];
+  }
+}
+
+export class VoltmeterElement extends Element {
+  stamp() {}
+  terminalCurrents() {
+    return [0, 0];
+  }
+}
+
+export class GroundElement extends Element {
+  stamp() {}
+  terminalCurrents() {
+    return [0];
+  }
+  reading(): Reading {
+    return { v: 0, i: 0, p: 0 };
+  }
+}
