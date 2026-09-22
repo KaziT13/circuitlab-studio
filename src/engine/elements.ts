@@ -625,3 +625,159 @@ export class DiodeElement extends Element {
     return r;
   }
 }
+
+export class NpnElement extends Element {
+  nonlinear = true;
+  vbeOld = 0;
+  vbcOld = 0;
+  get Is() {
+    return Math.max(num(this.comp.props.saturationCurrent, 1e-14), 1e-30);
+  }
+  get bf() {
+    return Math.max(num(this.comp.props.beta, 100), 1e-3);
+  }
+  get br() {
+    return Math.max(num(this.comp.props.betaR, 1), 1e-3);
+  }
+  reset() {
+    this.vbeOld = 0;
+    this.vbcOld = 0;
+  }
+  getState() {
+    return [this.vbeOld, this.vbcOld];
+  }
+  setState(s: [number, number]) {
+    [this.vbeOld, this.vbcOld] = s;
+  }
+  /** returns [Ic, Ib, dIc/dVbe, dIc/dVbc, dIb/dVbe, dIb/dVbc] */
+  model(vbe: number, vbc: number) {
+    const Is = this.Is;
+    const ebe = sexp(vbe / VT);
+    const ebc = sexp(vbc / VT);
+    const ic = Is * (ebe - ebc) - (Is / this.br) * (ebc - 1);
+    const ib = (Is / this.bf) * (ebe - 1) + (Is / this.br) * (ebc - 1);
+    const gbe = (Is / VT) * ebe;
+    const gbc = (Is / VT) * ebc;
+    return [ic, ib, gbe, -gbc - gbc / this.br, gbe / this.bf, gbc / this.br];
+  }
+  stamp(s: Sys, ctx: StampCtx) {
+    const [B, C, E] = this.nodes;
+    if (ctx.zeroSources) {
+      s.G(B, E, GMIN);
+      s.G(B, C, GMIN);
+      return;
+    }
+    const vcrit = VT * Math.log(VT / (Math.SQRT2 * this.Is));
+    const vB = this.v(ctx.x, 0);
+    const vC = this.v(ctx.x, 1);
+    const vE = this.v(ctx.x, 2);
+    const [vbe, l1] = pnjlim(vB - vE, this.vbeOld, VT, vcrit);
+    const [vbc, l2] = pnjlim(vB - vC, this.vbcOld, VT, vcrit);
+    this.limited = l1 || l2;
+    this.vbeOld = vbe;
+    this.vbcOld = vbc;
+    const [ic, ib, cbe, cbc, bbe, bbc] = this.model(vbe, vbc);
+    const rows: [number, number, number, number][] = [
+      [C, ic, cbe, cbc],
+      [B, ib, bbe, bbc],
+      [E, -(ic + ib), -(cbe + bbe), -(cbc + bbc)],
+    ];
+    for (const [node, i0, dbe, dbc] of rows) {
+      const r = s.n(node);
+      s.add(r, s.n(B), dbe + dbc);
+      s.add(r, s.n(E), -dbe);
+      s.add(r, s.n(C), -dbc);
+      s.rhs(r, -(i0 - dbe * vbe - dbc * vbc));
+    }
+    s.G(B, E, GMIN);
+    s.G(B, C, GMIN);
+  }
+  stampAC(s: CSys) {
+    const [B, C, E] = this.nodes;
+    const [, , cbe, cbc, bbe, bbc] = this.model(this.vbeOld, this.vbcOld);
+    const rows: [number, number, number][] = [
+      [C, cbe, cbc],
+      [B, bbe, bbc],
+      [E, -(cbe + bbe), -(cbc + bbc)],
+    ];
+    for (const [node, dbe, dbc] of rows) {
+      const r = s.n(node);
+      s.add(r, s.n(B), dbe + dbc, 0);
+      s.add(r, s.n(E), -dbe, 0);
+      s.add(r, s.n(C), -dbc, 0);
+    }
+    s.Y(B, E, GMIN, 0);
+    s.Y(B, C, GMIN, 0);
+  }
+  terminalCurrents(x: Float64Array) {
+    const vB = this.v(x, 0);
+    const vC = this.v(x, 1);
+    const vE = this.v(x, 2);
+    const [ic, ib] = this.model(vB - vE, vB - vC);
+    const ibT = ib + GMIN * (2 * vB - vE - vC);
+    const icT = ic - GMIN * (vB - vC);
+    const ieT = -(ic + ib) - GMIN * (vB - vE);
+    return [ibT, icT, ieT];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const [ib, ic, ie] = this.terminalCurrents(x);
+    void ctx;
+    const vB = this.v(x, 0);
+    const vC = this.v(x, 1);
+    const vE = this.v(x, 2);
+    const vbe = vB - vE;
+    const vbc = vB - vC;
+    const p = vB * ib + vC * ic + vE * ie;
+    const region = vbe < 0.45 ? 'Cut-off' : vbc > 0.4 ? 'Saturation' : 'Forward active';
+    return {
+      v: vC - vE,
+      i: ic,
+      p,
+      extra: { Ib: ib, Ic: ic, Ie: -ie, Vbe: vbe, Vce: vC - vE, region, hFE: ib > 1e-12 ? ic / ib : 0 },
+    };
+  }
+  readingAC(xr: Float64Array, xi: Float64Array): [number, number, number, number] {
+    const [, , cbe, cbc] = this.model(this.vbeOld, this.vbcOld);
+    const vber = this.cv(xr, 0) - this.cv(xr, 2);
+    const vbei = this.cv(xi, 0) - this.cv(xi, 2);
+    const vbcr = this.cv(xr, 0) - this.cv(xr, 1);
+    const vbci = this.cv(xi, 0) - this.cv(xi, 1);
+    return [
+      this.cv(xr, 1) - this.cv(xr, 2),
+      this.cv(xi, 1) - this.cv(xi, 2),
+      cbe * vber + cbc * vbcr,
+      cbe * vbei + cbc * vbci,
+    ];
+  }
+}
+
+export function makeElement(comp: Component, nodes: number[]): Element {
+  switch (comp.type) {
+    case 'resistor':
+    case 'bulb':
+    case 'switch':
+    case 'pushbutton':
+      return new ResistiveElement(comp, nodes);
+    case 'spdt':
+      return new SpdtElement(comp, nodes);
+    case 'capacitor':
+      return new CapacitorElement(comp, nodes);
+    case 'inductor':
+      return new InductorElement(comp, nodes);
+    case 'dcsource':
+    case 'acsource':
+    case 'battery':
+      return new VoltageSourceElement(comp, nodes);
+    case 'ammeter':
+      return new AmmeterElement(comp, nodes);
+    case 'voltmeter':
+      return new VoltmeterElement(comp, nodes);
+    case 'ground':
+      return new GroundElement(comp, nodes);
+    case 'diode':
+    case 'led':
+      return new DiodeElement(comp, nodes);
+    case 'npn':
+      return new NpnElement(comp, nodes);
+  }
+}
