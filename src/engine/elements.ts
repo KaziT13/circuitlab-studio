@@ -552,3 +552,76 @@ export class GroundElement extends Element {
     return { v: 0, i: 0, p: 0 };
   }
 }
+
+// ---------------------------------------------------------------- semiconductors
+
+export class DiodeElement extends Element {
+  nonlinear = true;
+  vdOld = 0;
+  Is = 1e-14;
+  nVt = VT;
+  vcrit = 0.6;
+  constructor(comp: Component, nodes: number[]) {
+    super(comp, nodes);
+    if (comp.type === 'led') {
+      const n = 2;
+      this.nVt = n * VT;
+      const vf = num(comp.props.forwardVoltage, LED_COLORS[String(comp.props.color)]?.vf ?? 1.9);
+      this.Is = 0.02 / (Math.exp(vf / this.nVt) - 1);
+    } else {
+      this.Is = Math.max(num(comp.props.saturationCurrent, 1e-14), 1e-30);
+      this.nVt = Math.max(num(comp.props.emission, 1), 0.1) * VT;
+    }
+    this.vcrit = this.nVt * Math.log(this.nVt / (Math.SQRT2 * this.Is));
+  }
+  reset() {
+    this.vdOld = 0;
+  }
+  getState() {
+    return this.vdOld;
+  }
+  setState(s: number) {
+    this.vdOld = s;
+  }
+  stamp(s: Sys, ctx: StampCtx) {
+    const [a, b] = this.nodes;
+    if (ctx.zeroSources) {
+      s.G(a, b, GMIN);
+      return;
+    }
+    const vd0 = this.v(ctx.x, 0) - this.v(ctx.x, 1);
+    const [vd, lim] = pnjlim(vd0, this.vdOld, this.nVt, this.vcrit);
+    this.limited = lim;
+    this.vdOld = vd;
+    const e = sexp(vd / this.nVt);
+    const id = this.Is * (e - 1);
+    const gd = (this.Is / this.nVt) * e + GMIN;
+    s.G(a, b, gd);
+    s.I(a, b, id - gd * vd + GMIN * vd);
+  }
+  gdAt(vd: number) {
+    return (this.Is / this.nVt) * sexp(vd / this.nVt) + GMIN;
+  }
+  stampAC(s: CSys) {
+    s.Y(this.nodes[0], this.nodes[1], this.gdAt(this.vdOld), 0);
+  }
+  terminalCurrents(x: Float64Array) {
+    const vd = this.v(x, 0) - this.v(x, 1);
+    const i = this.Is * (sexp(vd / this.nVt) - 1) + GMIN * vd;
+    return [i, -i];
+  }
+  currentAC(xr: Float64Array, xi: Float64Array): [number, number] {
+    const g = this.gdAt(this.vdOld);
+    return [(this.cv(xr, 0) - this.cv(xr, 1)) * g, (this.cv(xi, 0) - this.cv(xi, 1)) * g];
+  }
+  reading(x: Float64Array, ctx: StampCtx): Reading {
+    const r = super.reading(x, ctx);
+    const max = num(this.comp.props.maxCurrent, this.comp.type === 'led' ? 0.03 : 1);
+    r.extra = {
+      state: r.i > 1e-6 ? 'Forward (conducting)' : r.v < 0 ? 'Reverse biased' : 'Off',
+      ratingUse: r.i / max,
+    };
+    if (this.comp.type === 'led') r.extra.brightness = Math.max(0, Math.min(r.i / 0.02, 1.5));
+    return r;
+  }
+}
