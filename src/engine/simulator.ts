@@ -241,4 +241,62 @@ export class Simulator {
     this.needBE = false;
     return r;
   }
+
+  /** Readings for every component at the current solution. */
+  snapshot(extraIssues: Issue[] = []): SimSnapshot {
+    const ctx = this.lastCtx;
+    const x = this.x;
+    const nodeV = [0];
+    for (let k = 0; k < this.nn; k++) nodeV.push(x[k] ?? 0);
+    const readings: Record<string, Reading> = {};
+    const termCurrents: Record<string, number[]> = {};
+    const kcl = new Float64Array(this.nn + 1);
+    let pSum = 0;
+    let pScale = 0;
+    for (const el of this.elements) {
+      const tc = el.terminalCurrents(x, ctx);
+      termCurrents[el.id] = tc;
+      el.nodes.forEach((n, k) => (kcl[n] += tc[k]));
+      const r = el.reading(x, ctx);
+      readings[el.id] = r;
+      pSum += r.p;
+      pScale += Math.abs(r.p);
+    }
+    let kclResidual = 0;
+    for (let k = 1; k <= this.nn; k++) {
+      // account for the gmin shunt to ground
+      kclResidual = Math.max(kclResidual, Math.abs(kcl[k] + nodeV[k] * GMIN));
+    }
+    const issues: Issue[] = [...extraIssues];
+    let maxI = 1e-3;
+    for (const id in termCurrents) for (const c of termCurrents[id]) maxI = Math.max(maxI, Math.abs(c));
+    if (kclResidual > 1e-4 * maxI + 1e-7) {
+      issues.push({ level: 'warning', message: `KCL check: node current residual ${kclResidual.toExponential(2)} A is larger than expected — results may be inaccurate.` });
+    }
+    for (const el of this.elements) {
+      const r = readings[el.id];
+      const use = r.extra?.ratingUse;
+      if (typeof use === 'number' && use > 1) {
+        const c = el.comp;
+        const what =
+          c.type === 'resistor'
+            ? `dissipates ${r.p.toFixed(3)} W, above its ${c.props.powerRating} W rating`
+            : c.type === 'capacitor'
+              ? `voltage exceeds its ${c.props.voltageRating} V rating`
+              : c.type === 'inductor'
+                ? `current exceeds its ${c.props.currentRating} A rating`
+                : `forward current ${(r.i * 1000).toFixed(1)} mA exceeds its ${(Number(c.props.maxCurrent) * 1000).toFixed(0)} mA maximum — add a current-limiting resistor`;
+        issues.push({ level: 'warning', compId: c.id, message: `${c.label} ${what}.` });
+      }
+    }
+    return {
+      t: this.t,
+      nodeV,
+      readings,
+      termCurrents,
+      kclResidual,
+      powerBalance: pScale > 0 ? pSum : 0,
+      issues,
+    };
+  }
 }
