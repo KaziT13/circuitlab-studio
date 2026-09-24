@@ -132,4 +132,113 @@ export class Simulator {
     }
     return 'Circuit equations are singular — check for loops of ideal voltage sources, ammeters or inductors.';
   }
+
+  /** Newton–Raphson solve of the (possibly nonlinear) MNA system. */
+  private newton(ctx: StampCtx, maxIter = MAX_NEWTON, gminExtra = 0): SolveResult {
+    const s = this.sys;
+    const size = s.size;
+    if (size === 0) return { ok: true, iterations: 0 };
+    let x = this.x;
+    for (let it = 0; it < maxIter; it++) {
+      s.clear();
+      ctx.x = x;
+      for (const el of this.elements) el.stamp(s, ctx);
+      // gmin to ground on every node keeps floating nodes solvable
+      for (let k = 0; k < this.nn; k++) s.A[k * size + k] += GMIN + gminExtra;
+      let xn: Float64Array;
+      try {
+        xn = solveReal(s.A, s.b, size);
+      } catch (e) {
+        if (e instanceof SingularMatrixError) return { ok: false, error: this.explainSingular(e.row, ctx) };
+        throw e;
+      }
+      for (let k = 0; k < size; k++) {
+        if (!Number.isFinite(xn[k])) return { ok: false, error: 'Numerical overflow — the solution diverged.' };
+      }
+      if (!this.hasNonlinear) {
+        this.x = xn;
+        return { ok: true, iterations: 1 };
+      }
+      let conv = true;
+      for (let k = 0; k < size; k++) {
+        const tol = k < this.nn ? 1e-6 + 1e-6 * Math.abs(xn[k]) : 1e-9 + 1e-6 * Math.abs(xn[k]);
+        if (Math.abs(xn[k] - x[k]) > tol) {
+          conv = false;
+          break;
+        }
+      }
+      const limited = this.elements.some((e) => e.limited);
+      x = xn;
+      if (conv && !limited && it > 0) {
+        this.x = x;
+        return { ok: true, iterations: it + 1 };
+      }
+    }
+    this.x = x;
+    return { ok: false, error: 'Newton–Raphson iteration did not converge (nonlinear devices).' };
+  }
+
+  /** DC operating point: capacitors open, inductors shorted, AC sources at their DC offset. */
+  solveDC(): SolveResult {
+    const err = this.blockingError();
+    if (err) return { ok: false, error: err };
+    const ctx: StampCtx = { mode: 'dc', t: 0, h: 1, method: 'be', x: this.x };
+    this.lastCtx = ctx;
+    for (const el of this.elements) if (el.nonlinear) el.reset();
+    this.x = new Float64Array(this.nn + this.nb);
+    let r = this.newton(ctx);
+    if (!r.ok && this.hasNonlinear && !r.error?.startsWith('Cannot')) {
+      // gmin stepping fallback
+      this.x = new Float64Array(this.nn + this.nb);
+      for (const el of this.elements) if (el.nonlinear) el.reset();
+      for (let g = 1e-2; g >= 1e-12; g /= 10) {
+        r = this.newton(ctx, MAX_NEWTON, g);
+        if (!r.ok) break;
+      }
+      if (r.ok) r = this.newton(ctx);
+      if (!r.ok) {
+        // source stepping fallback
+        this.x = new Float64Array(this.nn + this.nb);
+        for (const el of this.elements) if (el.nonlinear) el.reset();
+        for (let sc = 0.1; sc <= 1.0001; sc += 0.1) {
+          ctx.srcScale = Math.min(sc, 1);
+          r = this.newton(ctx);
+          if (!r.ok) break;
+        }
+        ctx.srcScale = 1;
+      }
+    }
+    return r;
+  }
+
+  /** Advance the transient simulation by one step of size h. */
+  step(h: number): SolveResult {
+    const err = this.blockingError();
+    if (err) return { ok: false, error: err };
+    const method = this.needBE ? 'be' : 'trap';
+    const ctx: StampCtx = { mode: 'tran', t: this.t + h, h, method, x: this.x };
+    const saved = this.x;
+    let r = this.newton(ctx);
+    if (!r.ok && this.hasNonlinear && !r.error?.startsWith('Cannot')) {
+      // retry with smaller sub-steps using backward Euler
+      this.x = saved;
+      const sub = 8;
+      for (let k = 1; k <= sub; k++) {
+        const c2: StampCtx = { mode: 'tran', t: this.t + (h * k) / sub, h: h / sub, method: 'be', x: this.x };
+        r = this.newton(c2, 300);
+        if (!r.ok) return r;
+        for (const el of this.elements) el.accept(this.x, c2);
+        this.lastCtx = c2;
+      }
+      this.t += h;
+      this.needBE = true;
+      return r;
+    }
+    if (!r.ok) return r;
+    for (const el of this.elements) el.accept(this.x, ctx);
+    this.lastCtx = ctx;
+    this.t += h;
+    this.needBE = false;
+    return r;
+  }
 }
