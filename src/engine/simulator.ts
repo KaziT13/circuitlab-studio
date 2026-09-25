@@ -299,4 +299,86 @@ export class Simulator {
       issues,
     };
   }
+
+  /** Small-signal / phasor analysis at one frequency (nonlinear devices linearised at the DC point). */
+  solveAC(freq: number, opDone = false): ACResult {
+    const err = this.blockingError();
+    if (err) return { ok: false, error: err, freq, nodeV: [], comps: {} };
+    if (!opDone && this.hasNonlinear) {
+      const r = this.solveDC();
+      if (!r.ok) return { ok: false, error: r.error, freq, nodeV: [], comps: {} };
+    }
+    const w = 2 * Math.PI * freq;
+    const s = new CSys(this.nn, this.nb);
+    for (const el of this.elements) el.stampAC(s, w);
+    for (let k = 0; k < this.nn; k++) s.Ar[k * s.size + k] += GMIN;
+    let xr: Float64Array, xi: Float64Array;
+    try {
+      [xr, xi] = solveComplex(s.Ar, s.Ai, s.br_, s.bi, s.size);
+    } catch (e) {
+      if (e instanceof SingularMatrixError)
+        return { ok: false, error: this.explainSingular(e.row, { mode: 'tran' } as StampCtx), freq, nodeV: [], comps: {} };
+      throw e;
+    }
+    const nodeV: [number, number][] = [[0, 0]];
+    for (let k = 0; k < this.nn; k++) nodeV.push([xr[k], xi[k]]);
+    const comps: Record<string, ACComp> = {};
+    for (const el of this.elements) {
+      const [vr, vi, ir, ii] = el.readingAC(xr, xi, w);
+      comps[el.id] = { v: [vr, vi], i: [ir, ii] };
+    }
+    return { ok: true, freq, nodeV, comps };
+  }
+
+  /** Frequency sweep (log spaced). probe: 'n:<idx>' | 'v:<compId>' | 'i:<compId>' */
+  acSweep(f0: number, f1: number, points: number, probes: string[]): { ok: boolean; error?: string; f: number[]; data: Record<string, { mag: number[]; phase: number[] }> } {
+    const f: number[] = [];
+    const data: Record<string, { mag: number[]; phase: number[] }> = {};
+    for (const p of probes) data[p] = { mag: [], phase: [] };
+    if (this.hasNonlinear) {
+      const r = this.solveDC();
+      if (!r.ok) return { ok: false, error: r.error, f, data };
+    }
+    for (let k = 0; k < points; k++) {
+      const fk = f0 * Math.pow(f1 / f0, points === 1 ? 0 : k / (points - 1));
+      const res = this.solveAC(fk, true);
+      if (!res.ok) return { ok: false, error: res.error, f, data };
+      f.push(fk);
+      for (const p of probes) {
+        const [kind, id] = [p.slice(0, 1), p.slice(2)];
+        let re = 0,
+          im = 0;
+        if (kind === 'n') [re, im] = res.nodeV[Number(id)] ?? [0, 0];
+        else if (kind === 'v') [re, im] = res.comps[id]?.v ?? [0, 0];
+        else if (kind === 'i') [re, im] = res.comps[id]?.i ?? [0, 0];
+        data[p].mag.push(Math.hypot(re, im));
+        data[p].phase.push((Math.atan2(im, re) * 180) / Math.PI);
+      }
+    }
+    return { ok: true, f, data };
+  }
+
+  /** Thevenin resistance seen by element `id` (sources zeroed, capacitors open, inductors shorted). */
+  theveninResistance(id: string): number {
+    const el = this.byId.get(id);
+    if (!el || el.nodes.length < 2) return NaN;
+    const [a, b] = el.nodes;
+    if (a === b) return 0;
+    const ctx: StampCtx = { mode: 'dc', t: 0, h: 1, method: 'be', x: new Float64Array(this.nn + this.nb), zeroSources: true, testId: id };
+    const s = new Sys(this.nn, this.nb);
+    for (const e of this.elements) {
+      if (e.id === id && e.comp.type !== 'inductor') continue;
+      e.stamp(s, ctx);
+    }
+    for (let k = 0; k < this.nn; k++) s.A[k * s.size + k] += GMIN;
+    s.I(b, a, 1); // inject 1 A into node a
+    try {
+      const x = solveReal(s.A, s.b, s.size);
+      const va = a === 0 ? 0 : x[a - 1];
+      const vb = b === 0 ? 0 : x[b - 1];
+      return Math.abs(va - vb);
+    } catch {
+      return NaN;
+    }
+  }
 }
