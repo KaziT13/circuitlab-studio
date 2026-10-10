@@ -438,3 +438,275 @@ kbd {
   flex-direction: column;
   gap: 3px;
 }
+
+/* ------------------------------------------------------------ canvas */
+.canvas-wrap {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas);
+  overflow: hidden;
+}
+.canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  user-select: none;
+  cursor: default;
+}
+.canvas.tool-wire,
+.canvas.tool-probe {
+  cursor: crosshair;
+}
+.canvas.panning {
+  cursor: grabbing;
+}
+.grid-dot {
+  fill: var(--grid-dot);
+}
+.grid-major {
+  stroke: var(--grid-major);
+  stroke-width: 1;
+}
+.sym {
+  stroke: var(--sym);
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sym .sym-text,
+.sym text {
+  fill: var(--sym);
+  stroke: none;
+  font-family: var(--mono);
+}
+.sym .dot {
+  fill: var(--sym);
+}
+.sym .arrow {
+  fill: var(--sym);
+}
+.sym .glow {
+  stroke: none;
+  filter: blur(6px);
+}
+.sym .cap-charge {
+  stroke: none;
+  opacity: 0.55;
+}
+.sym .mag-field {
+  stroke: #a78bfa;
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+.sym .sym-hot {
+  stroke: var(--red);
+  stroke-dasharray: 3 2;
+}
+.sym .diode-on {
+  fill: rgba(61, 220, 132, 0.25);
+}
+.sym .sw-closed {
+  stroke: var(--green);
+}
+.sym .meter {
+  fill: #1d2430;
+}
+.sym .meter-letter {
+  font-weight: 600;
+}
+.comp .hit {
+  fill: transparent;
+  cursor: move;
+}
+.comp:hover .sym {
+  stroke: #fff;
+}
+.comp.selected .sym {
+  stroke: #9fcbff;
+}
+.comp .sel-box {
+  fill: var(--accent-dim);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+.wire {
+  stroke: var(--wire);
+  stroke-width: 2;
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.wire.selected {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+}
+.wire-hit {
+  stroke: transparent;
+  stroke-width: 12;
+  fill: none;
+  cursor: pointer;
+}
+.wire-hit:hover + .wire {
+  stroke-width: 3;
+}
+.current-dots {
+  stroke: var(--yellow);
+  stroke-width: 3.6;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 16;
+  pointer-events: none;
+  opacity: 0.95;
+}
+.junction {
+  fill: var(--wire);
+}
+.terminal {
+  pointer-events: none;
+}
+.terminal.open {
+  fill: none;
+  stroke: var(--orange);
+  stroke-width: 1.5;
+}
+.terminal.ok {
+  fill: var(--accent);
+}
+.terminal.hover {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 1;
+}
+.terminal-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.labels .lbl {
+  fill: #c7d0db;
+  font: 600 11px var(--sans);
+}
+.labels .val {
+  fill: #8ea3bb;
+  font: 10.5px var(--mono);
+}
+.labels .meas {
+  fill: var(--yellow);
+  font: 10.5px var(--mono);
+}
+.labels .meter-read {
+  fill: var(--green);
+  font-weight: 500;
+  font-size: 12px;
+}
+.node-tag rect {
+  fill: rgba(20, 22, 26, 0.85);
+  stroke: rgba(77, 163, 255, 0.35);
+  stroke-width: 0.8;
+}
+.node-tag text {
+  fill: #9ccbff;
+  font: 9.5px var(--mono);
+}
+.wire-draft {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  fill: none;
+}
+.draft-cursor {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.draft-cursor.faint {
+  opacity: 0.5;
+}
+.probe {
+  cursor: pointer;
+}
+.probe-text {
+  font: 600 9px var(--mono);
+  fill: #111;
+}
+.hud {
+  position: absolute;
+  background: rgba(30, 33, 39, 0.92);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  backdrop-filter: blur(6px);
+}
+.hud.tools {
+  top: 10px;
+  left: 22px;
+  flex-direction: column;
+}
+.hud.tools button {
+  width: 32px;
+  height: 30px;
+  padding: 6px;
+  border: 1px solid transparent;
+  background: none;
+}
+.hud.tools button.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.hud.tools svg {
+  width: 100%;
+  height: 100%;
+  fill: var(--text);
+  stroke: var(--text);
+}
+.hud.zoom {
+  bottom: 10px;
+  right: 22px;
+}
+.hud.zoom button {
+  background: none;
+  border: none;
+  padding: 2px 8px;
+}
+.hud.zoom span {
+  font: 11px var(--mono);
+  min-width: 42px;
+  text-align: center;
+  color: var(--text-2);
+}
+.hud.hint {
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+.empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-2);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 16px;
+}
+.empty-state.static {
+  position: relative;
+  top: 40%;
+}
+.empty-title {
+  font-size: 18px;
+  color: var(--text);
+  font-weight: 500;
+}
