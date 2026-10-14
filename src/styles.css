@@ -710,3 +710,216 @@ kbd {
   color: var(--text);
   font-weight: 500;
 }
+
+/* ------------------------------------------------------------ properties */
+.props {
+  width: 300px;
+  flex: none;
+  border-left: 1px solid var(--border);
+}
+.props-scroll {
+  overflow-y: auto;
+  flex: 1;
+}
+.section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-2);
+  margin-bottom: 7px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.section-title .small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.comp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 6px;
+}
+.comp-head .sym-icon {
+  background: #16181c;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.comp-type {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.label-input {
+  font-weight: 600;
+  font-size: 15px;
+  width: 150px;
+  background: transparent;
+  border-color: transparent;
+  padding-left: 0;
+}
+.label-input:hover {
+  border-color: var(--border-2);
+}
+.btn-row {
+  display: flex;
+  gap: 6px;
+  padding: 4px 12px 10px;
+  flex-wrap: wrap;
+}
+.section .btn-row {
+  padding: 8px 0 4px;
+}
+.field {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  align-items: start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.field > span {
+  padding-top: 4px;
+  color: var(--text-2);
+}
+.field em {
+  color: var(--muted);
+  font-style: normal;
+}
+.field select {
+  width: 120px;
+}
+.field input[type='checkbox'] {
+  justify-self: start;
+  margin-top: 6px;
+}
+.eng-input input {
+  width: 120px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.eng-input input.invalid {
+  border-color: var(--red);
+}
+.field-err {
+  color: var(--red);
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+table.kv {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.kv td {
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+table.kv td:first-child {
+  color: var(--text-2);
+}
+table.kv td:last-child {
+  text-align: right;
+}
+.learn p {
+  margin: 0 0 8px;
+  color: var(--text-2);
+}
+.learn-row {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 6px;
+  margin-bottom: 7px;
+  align-items: center;
+  font-size: 12px;
+}
+.learn-row > span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.learn-row code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: #ffd98a;
+  background: #16181c;
+  padding: 4px 6px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+.status-banner {
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border: 1px solid;
+}
+.status-banner.ok {
+  border-color: rgba(61, 220, 132, 0.45);
+  background: rgba(61, 220, 132, 0.08);
+  color: var(--green);
+}
+.status-banner.warn {
+  border-color: rgba(255, 169, 77, 0.45);
+  background: rgba(255, 169, 77, 0.08);
+  color: var(--orange);
+}
+.status-banner.idle {
+  border-color: var(--border-2);
+  color: var(--text-2);
+}
+.status-banner .small {
+  color: var(--text-2);
+  margin-top: 2px;
+}
+.issue {
+  display: flex;
+  gap: 7px;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  margin: 4px 0;
+  border-left: 3px solid;
+}
+.issue-dot {
+  flex: none;
+}
+.issue.error {
+  border-color: var(--red);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffb3b3;
+}
+.issue.warning {
+  border-color: var(--orange);
+  background: rgba(255, 169, 77, 0.07);
+  color: #ffd2a6;
+}
+.issue.info {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: #bcdcff;
+}
+.issue.clickable,
+tr.clickable {
+  cursor: pointer;
+}
+.example-info {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.example-info p {
+  color: var(--text-2);
+  margin: 0 0 6px;
+}
+.example-info ul {
+  margin: 4px 0;
+  padding-left: 16px;
+  color: #ffd98a;
+}
