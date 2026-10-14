@@ -470,3 +470,64 @@ export function Canvas() {
     </div>
   );
 }
+
+function CanvasHud({ netlistEmpty, drafting }: { netlistEmpty: boolean; drafting: boolean }) {
+  const tool = useStore((s) => s.tool);
+  const view = useStore((s) => s.view);
+  const set = useStore((s) => s.set);
+  const zoomBy = (f: number) => {
+    const el = document.querySelector('.canvas') as SVGSVGElement;
+    const r = el.getBoundingClientRect();
+    const mx = r.width / 2;
+    const my = r.height / 2;
+    const zoom = Math.min(Math.max(view.zoom * f, 0.2), 5);
+    set({ view: { zoom, x: mx - ((mx - view.x) / view.zoom) * zoom, y: my - ((my - view.y) / view.zoom) * zoom } });
+  };
+  return (
+    <>
+      <div className="hud tools">
+        <button className={tool === 'select' ? 'on' : ''} onClick={() => set({ tool: 'select' })} title="Select / move (S)">
+          <svg viewBox="0 0 16 16"><path d="M3 2 L3 13 L6 10 L8.5 14.5 L10.5 13.5 L8 9 L12 9 Z" /></svg>
+        </button>
+        <button className={tool === 'wire' ? 'on' : ''} onClick={() => set({ tool: 'wire' })} title="Draw wire (W)">
+          <svg viewBox="0 0 16 16"><path d="M2 13 L2 8 L12 8 L12 3" fill="none" strokeWidth="1.6" /><circle cx="2" cy="13" r="1.6" /><circle cx="12" cy="3" r="1.6" /></svg>
+        </button>
+        <button className={tool === 'probe' ? 'on' : ''} onClick={() => set({ tool: 'probe' })} title="Oscilloscope probe (P)">
+          <svg viewBox="0 0 16 16"><path d="M2 14 L6 10 M5 7 L9 11 L14 6 L10 2 Z" fill="none" strokeWidth="1.5" /></svg>
+        </button>
+      </div>
+      <div className="hud zoom">
+        <button onClick={() => zoomBy(1 / 1.25)} title="Zoom out">−</button>
+        <span>{Math.round(view.zoom * 100)}%</span>
+        <button onClick={() => zoomBy(1.25)} title="Zoom in">+</button>
+        <button onClick={() => fitView()} title="Fit circuit to view (F)">⤢</button>
+      </div>
+      {drafting && <div className="hud hint">Click to add corners · click a terminal/wire to connect · double-click or right-click to finish · Esc to cancel</div>}
+      {!drafting && tool === 'probe' && <div className="hud hint">Click any wire or terminal to attach a scope probe · click a probe to remove it</div>}
+      {netlistEmpty && (
+        <div className="empty-state">
+          <div className="empty-title">Empty workspace</div>
+          <div>Drag components from the library, then click a terminal to start a wire.</div>
+          <div className="muted">or load a prebuilt circuit from <b>Examples</b></div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function fitView() {
+  const { circuit, set } = useStore.getState();
+  const el = document.querySelector('.canvas') as SVGSVGElement | null;
+  if (!el) return;
+  const pts: Point[] = [];
+  for (const c of circuit.components) pts.push({ x: c.x, y: c.y }, ...terminalPositions(c));
+  for (const w of circuit.wires) pts.push(...w.points);
+  if (!pts.length) return;
+  const minX = Math.min(...pts.map((p) => p.x)) - 60;
+  const maxX = Math.max(...pts.map((p) => p.x)) + 80;
+  const minY = Math.min(...pts.map((p) => p.y)) - 60;
+  const maxY = Math.max(...pts.map((p) => p.y)) + 60;
+  const r = el.getBoundingClientRect();
+  const zoom = Math.min(Math.max(Math.min(r.width / (maxX - minX), r.height / (maxY - minY)), 0.3), 2.2);
+  set({ view: { zoom, x: r.width / 2 - ((minX + maxX) / 2) * zoom, y: r.height / 2 - ((minY + maxY) / 2) * zoom } });
+}
