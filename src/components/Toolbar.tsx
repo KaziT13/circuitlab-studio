@@ -130,3 +130,212 @@ function LoadDialog({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
+export function Toolbar() {
+  const status = useStore((s) => s.simStatus);
+  const speed = useStore((s) => s.speed);
+  const timestep = useStore((s) => s.timestep);
+  const snapshot = useStore((s) => s.snapshot);
+  const circuitName = useStore((s) => s.circuit.name);
+  const past = useStore((s) => s.past.length);
+  const future = useStore((s) => s.future.length);
+  const showVoltages = useStore((s) => s.showVoltages);
+  const showCurrents = useStore((s) => s.showCurrents);
+  const showVoltageColors = useStore((s) => s.showVoltageColors);
+  const learnMode = useStore((s) => s.learnMode);
+  const centerView = useStore((s) => s.centerView);
+  const simError = useStore((s) => s.simError);
+  const set = useStore((s) => s.set);
+  const notify = useStore((s) => s.notify);
+  const [loadOpen, setLoadOpen] = useState(false);
+  const [hText, setHText] = useState('');
+  const [hEditing, setHEditing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const save = () => {
+    const c = useStore.getState().circuit;
+    const name = prompt('Save circuit as:', c.name)?.trim();
+    if (!name) return;
+    const all = readSaved();
+    all[name] = { circuit: { ...c, name }, savedAt: Date.now() };
+    if (writeSaved(all)) {
+      useStore.getState().edit((x) => ({ ...x, name }), { history: false });
+      notify(`Saved “${name}” in this browser.`, 'success');
+    } else notify('Could not save: browser storage is unavailable.', 'error');
+  };
+
+  const sliderVal = Math.log10(speed);
+  const statusLabel = simError ? 'Error' : status === 'running' ? 'Running' : status === 'paused' ? 'Paused' : 'Stopped';
+  const statusCls = simError ? 'err' : status === 'running' ? 'ok' : status === 'paused' ? 'warn' : 'idle';
+
+  return (
+    <header className="toolbar">
+      <div className="brand">
+        <svg viewBox="0 0 24 24" width="22" height="22">
+          <path d="M2 12 H6 L8 7 L11 17 L14 7 L16 12 H22" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
+        </svg>
+        <span>Ohmlab</span>
+        <em>Studio</em>
+      </div>
+
+      <Menu label="File">
+        {(close) => (
+          <>
+            <button
+              onClick={() => {
+                stopSim();
+                useStore.getState().loadCircuit(emptyCircuit());
+                close();
+              }}
+            >
+              New circuit
+            </button>
+            <button onClick={() => (save(), close())}>Save to browser…</button>
+            <button onClick={() => (setLoadOpen(true), close())}>Open saved…</button>
+            <hr />
+            <button
+              onClick={() => {
+                const c = useStore.getState().circuit;
+                download(`${c.name.replace(/[^\w-]+/g, '_') || 'circuit'}.circuit.json`, JSON.stringify(c, null, 2), 'application/json');
+                close();
+              }}
+            >
+              Export JSON file
+            </button>
+            <button onClick={() => (fileRef.current?.click(), close())}>Import JSON file…</button>
+            <hr />
+            <button onClick={() => (set({ bottomTab: 'spice', bottomOpen: true }), close())}>SPICE netlist import / export…</button>
+          </>
+        )}
+      </Menu>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const c = validateCircuit(JSON.parse(await f.text()));
+            stopSim();
+            useStore.getState().loadCircuit(c);
+            requestAnimationFrame(fitView);
+            notify(`Imported ${c.components.length} components.`, 'success');
+          } catch (err) {
+            notify(`Import failed: ${(err as Error).message}`, 'error');
+          }
+        }}
+      />
+
+      <Menu label="Examples" wide>
+        {(close) =>
+          EXAMPLES.map((ex, i) => (
+            <button key={ex.id} className="ex-item" onClick={() => (loadExample(ex.id), close())}>
+              <b>
+                {i + 1}. {ex.title}
+              </b>
+              <span>{ex.summary}</span>
+            </button>
+          ))
+        }
+      </Menu>
+
+      <div className="tb-group">
+        <button className="icon" disabled={!past} onClick={() => useStore.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
+        <button className="icon" disabled={!future} onClick={() => useStore.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+      </div>
+
+      <div className="tb-group sim-controls">
+        <button className={`run ${status === 'running' ? 'on' : ''}`} onClick={runSim} title="Run transient simulation">
+          ▶ Run
+        </button>
+        <button onClick={pauseSim} disabled={status !== 'running'} title="Pause">
+          ❚❚<span className="lbl"> Pause</span>
+        </button>
+        <button onClick={stopSim} disabled={status === 'stopped'} title="Stop and clear results">
+          ■<span className="lbl"> Stop</span>
+        </button>
+        <button onClick={resetSim} title="Reset time to 0 and restore initial conditions">
+          ⟲<span className="lbl"> Reset</span>
+        </button>
+        <button onClick={stepOnce} disabled={status === 'running'} title="Advance one time step">
+          ⇥<span className="lbl"> Step</span>
+        </button>
+      </div>
+
+      <div className="tb-group speed">
+        <label title="Simulated time per real second">
+          <span>Speed</span>
+          <input
+            type="range"
+            min={-6}
+            max={1}
+            step={0.05}
+            value={sliderVal}
+            onChange={(e) => set({ speed: Math.pow(10, Number(e.target.value)) })}
+          />
+          <b className="mono">{formatEng(speed, 's')}/s</b>
+        </label>
+        <label title="Integration time step (blank = automatic)">
+          <span>Δt</span>
+          <input
+            className="mono dt"
+            placeholder={`auto ${formatEng(stepSize(), 's')}`}
+            value={hEditing ? hText : timestep ? formatEng(timestep, 's') : ''}
+            onFocus={() => {
+              setHEditing(true);
+              setHText(timestep ? formatEng(timestep, 's') : '');
+            }}
+            onChange={(e) => setHText(e.target.value)}
+            onBlur={() => {
+              setHEditing(false);
+              const v = parseEng(hText);
+              if (!hText.trim() || hText.trim().toLowerCase() === 'auto') set({ timestep: null });
+              else if (Number.isFinite(v) && v > 0) set({ timestep: v });
+              else notify('Time step must be a positive value such as 10u', 'warning');
+              setHText('');
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
+        </label>
+      </div>
+
+      <div className={`sim-status ${statusCls}`}>
+        <span className="dot" />
+        <span>{statusLabel}</span>
+        <span className="mono">t = {formatEng(snapshot?.t ?? 0, 's')}</span>
+      </div>
+
+      <div className="tb-spacer" />
+
+      <div className="tb-group toggles">
+        <button className={showVoltages ? 'on' : ''} onClick={() => set({ showVoltages: !showVoltages })} title="Show node voltages">
+          V
+        </button>
+        <button className={showCurrents ? 'on' : ''} onClick={() => set({ showCurrents: !showCurrents })} title="Animate current flow">
+          I
+        </button>
+        <button className={showVoltageColors ? 'on' : ''} onClick={() => set({ showVoltageColors: !showVoltageColors })} title="Color wires by voltage">
+          ◐
+        </button>
+        <button className={learnMode ? 'on' : ''} onClick={() => set({ learnMode: !learnMode })} title="Learning mode: physics explanations">
+          🎓<span className="lbl"> Learn</span>
+        </button>
+      </div>
+      <div className="tb-group seg">
+        <button className={centerView === 'schematic' ? 'on' : ''} onClick={() => set({ centerView: 'schematic' })}>
+          Schematic
+        </button>
+        <button className={centerView === 'pcb' ? 'on' : ''} onClick={() => set({ centerView: 'pcb' })}>
+          PCB
+        </button>
+      </div>
+      <div className="circuit-name" title="Circuit name">
+        {circuitName}
+      </div>
+      {loadOpen && <LoadDialog onClose={() => setLoadOpen(false)} />}
+    </header>
+  );
+}
