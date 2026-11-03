@@ -463,3 +463,58 @@ function TauCalc() {
     </div>
   );
 }
+
+// ------------------------------------------------------------------ SPICE
+
+function SpicePanel() {
+  const circuit = useStore((s) => s.circuit);
+  const notify = useStore((s) => s.notify);
+  const [tstop, setTstop] = useState('10m');
+  const text = useMemo(() => exportSpice(circuit, { tstop: parseEng(tstop) > 0 ? parseEng(tstop) : undefined }), [circuit, tstop]);
+  const [input, setInput] = useState('* RC low-pass\nV1 in 0 SIN(0 5 1k) AC 5\nR1 in out 1k\nC1 out 0 159n\n.end');
+  const [warnings, setWarnings] = useState<string[]>([]);
+  return (
+    <div className="pad spice">
+      <div className="spice-col">
+        <div className="scope-controls">
+          <b>Export</b>
+          <label>
+            .tran stop <input className="mono short" value={tstop} onChange={(e) => setTstop(e.target.value)} />
+          </label>
+          <button onClick={() => navigator.clipboard?.writeText(text).then(() => notify('Netlist copied to clipboard.', 'success'))}>Copy</button>
+          <button onClick={() => download(`${circuit.name.replace(/[^\w-]+/g, '_')}.cir`, text)}>Download .cir</button>
+        </div>
+        <textarea className="mono" readOnly value={text} />
+      </div>
+      <div className="spice-col">
+        <div className="scope-controls">
+          <b>Import</b>
+          <span className="muted small">R, C, L, V (DC / SIN), D, Q (NPN) and .model lines</span>
+          <button
+            className="primary"
+            onClick={() => {
+              try {
+                const { circuit: c, warnings } = importSpice(input);
+                stopSim();
+                useStore.getState().loadCircuit(c);
+                setWarnings(warnings);
+                requestAnimationFrame(fitView);
+                notify(`Imported ${c.components.length} components from netlist.`, 'success');
+              } catch (e) {
+                notify(`Netlist import failed: ${(e as Error).message}`, 'error');
+              }
+            }}
+          >
+            Build schematic
+          </button>
+        </div>
+        <textarea className="mono" value={input} onChange={(e) => setInput(e.target.value)} spellCheck={false} />
+        {warnings.map((w, i) => (
+          <div key={i} className="issue warning">
+            {w}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
