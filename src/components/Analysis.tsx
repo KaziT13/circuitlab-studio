@@ -308,3 +308,158 @@ function AcPanel() {
     </div>
   );
 }
+
+// ------------------------------------------------------------------ Ohm's law calculator
+
+function OhmCalc() {
+  const [vals, setVals] = useState({ V: '', I: '', R: '', P: '' });
+  const [out, setOut] = useState<{ V: number; I: number; R: number; P: number; how: string } | null>(null);
+  const [err, setErr] = useState('');
+  const [list, setList] = useState('1k, 2.2k, 3.3k');
+  const solve = () => {
+    const n = Object.fromEntries(Object.entries(vals).map(([k, v]) => [k, v.trim() ? parseEng(v) : NaN])) as Record<'V' | 'I' | 'R' | 'P', number>;
+    const known = (Object.keys(n) as ('V' | 'I' | 'R' | 'P')[]).filter((k) => Number.isFinite(n[k]));
+    if (known.length !== 2) {
+      setErr('Enter exactly two of V, I, R, P.');
+      setOut(null);
+      return;
+    }
+    setErr('');
+    let { V, I, R, P } = n;
+    const k = known.sort().join('');
+    let how = '';
+    switch (k) {
+      case 'IV':
+        R = V / I;
+        P = V * I;
+        how = 'R = V/I,  P = V·I';
+        break;
+      case 'RV':
+        I = V / R;
+        P = (V * V) / R;
+        how = 'I = V/R,  P = V²/R';
+        break;
+      case 'PV':
+        I = P / V;
+        R = (V * V) / P;
+        how = 'I = P/V,  R = V²/P';
+        break;
+      case 'IR':
+        V = I * R;
+        P = I * I * R;
+        how = 'V = I·R,  P = I²R';
+        break;
+      case 'IP':
+        V = P / I;
+        R = P / (I * I);
+        how = 'V = P/I,  R = P/I²';
+        break;
+      case 'PR':
+        I = Math.sqrt(P / R);
+        V = Math.sqrt(P * R);
+        how = 'I = √(P/R),  V = √(P·R)';
+        break;
+    }
+    setOut({ V, I, R, P, how });
+  };
+  const parts = list
+    .split(/[,;\s]+/)
+    .map(parseEng)
+    .filter((v) => v > 0);
+  const series = parts.reduce((a, b) => a + b, 0);
+  const parallel = parts.length ? 1 / parts.reduce((a, b) => a + 1 / b, 0) : NaN;
+  const units: Record<string, string> = { V: 'V', I: 'A', R: 'Ω', P: 'W' };
+  return (
+    <div className="pad calc">
+      <div className="calc-card">
+        <div className="section-title">Ohm's law & power</div>
+        <div className="formulas mono">V = I·R &nbsp;·&nbsp; P = I·V &nbsp;·&nbsp; P = I²R &nbsp;·&nbsp; P = V²/R</div>
+        <div className="calc-grid">
+          {(['V', 'I', 'R', 'P'] as const).map((k) => (
+            <label key={k}>
+              <span>
+                {k} ({units[k]})
+              </span>
+              <input className="mono" placeholder={k === 'V' ? 'e.g. 9' : k === 'I' ? 'e.g. 20m' : k === 'R' ? 'e.g. 4.7k' : 'e.g. 0.25'} value={vals[k]} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && solve()} />
+            </label>
+          ))}
+        </div>
+        <div className="btn-row">
+          <button className="primary" onClick={solve}>
+            Solve
+          </button>
+          <button onClick={() => (setVals({ V: '', I: '', R: '', P: '' }), setOut(null), setErr(''))}>Clear</button>
+        </div>
+        {err && <div className="issue warning">{err}</div>}
+        {out && (
+          <div className="calc-out">
+            {(['V', 'I', 'R', 'P'] as const).map((k) => (
+              <div key={k}>
+                <span>{k}</span>
+                <b className="mono">{formatEng(out[k], units[k], 4)}</b>
+              </div>
+            ))}
+            <div className="muted small mono">{out.how}</div>
+          </div>
+        )}
+      </div>
+      <div className="calc-card">
+        <div className="section-title">Series / parallel resistance</div>
+        <input className="mono wide" value={list} onChange={(e) => setList(e.target.value)} />
+        <div className="kv-line">
+          <span>Series R = ΣRᵢ</span>
+          <b className="mono">{parts.length ? formatEng(series, 'Ω', 4) : '—'}</b>
+        </div>
+        <div className="kv-line">
+          <span>Parallel R = 1/Σ(1/Rᵢ)</span>
+          <b className="mono">{parts.length ? formatEng(parallel, 'Ω', 4) : '—'}</b>
+        </div>
+      </div>
+      <TauCalc />
+    </div>
+  );
+}
+
+function TauCalc() {
+  const [r, setR] = useState('1k');
+  const [c, setC] = useState('100u');
+  const [l, setL] = useState('10m');
+  const R = parseEng(r);
+  const C = parseEng(c);
+  const L = parseEng(l);
+  return (
+    <div className="calc-card">
+      <div className="section-title">Time constants & resonance</div>
+      <div className="calc-grid three">
+        <label>
+          <span>R (Ω)</span>
+          <input className="mono" value={r} onChange={(e) => setR(e.target.value)} />
+        </label>
+        <label>
+          <span>C (F)</span>
+          <input className="mono" value={c} onChange={(e) => setC(e.target.value)} />
+        </label>
+        <label>
+          <span>L (H)</span>
+          <input className="mono" value={l} onChange={(e) => setL(e.target.value)} />
+        </label>
+      </div>
+      <div className="kv-line">
+        <span>τ = RC</span>
+        <b className="mono">{formatEng(R * C, 's')}</b>
+      </div>
+      <div className="kv-line">
+        <span>τ = L/R</span>
+        <b className="mono">{formatEng(L / R, 's')}</b>
+      </div>
+      <div className="kv-line">
+        <span>f₀ = 1/(2π√LC)</span>
+        <b className="mono">{formatEng(1 / (2 * Math.PI * Math.sqrt(L * C)), 'Hz')}</b>
+      </div>
+      <div className="kv-line">
+        <span>Series ζ = (R/2)√(C/L)</span>
+        <b className="mono">{((R / 2) * Math.sqrt(C / L)).toFixed(3)}</b>
+      </div>
+    </div>
+  );
+}
