@@ -1305,3 +1305,120 @@ input.wide {
 .ask-row input {
   flex: 1;
 }
+
+/* ------------------------------------------------------------ pcb */
+.pcb-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #101214;
+}
+.pcb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 30px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.pcb-toolbar label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--text-2);
+}
+.layer {
+  font: 600 11px var(--mono);
+}
+.layer.top {
+  color: #e05a4f;
+}
+.layer.bottom {
+  color: #5b8fd9;
+}
+.pcb-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 30px;
+}
+.pcb {
+  display: block;
+  user-select: none;
+  touch-action: none;
+}
+.pcb .board {
+  fill: #0f2d1e;
+  stroke: #d9c86a;
+  stroke-width: 1.5;
+}
+.pcb .mount {
+  fill: #101214;
+  stroke: #c8a84a;
+  stroke-width: 2;
+}
+.pcb .trace {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pcb .trace.top {
+  stroke: #c8453b;
+  opacity: 0.9;
+}
+.pcb .trace.bottom {
+  stroke: #3f74c4;
+  opacity: 0.85;
+}
+.pcb .pad,
+.pcb .via {
+  fill: #d4a84b;
+}
+.pcb .drill {
+  fill: #101214;
+}
+.pcb .fp {
+  cursor: move;
+}
+.pcb .courtyard {
+  fill: transparent;
+  stroke: transparent;
+}
+.pcb .fp:hover .courtyard {
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-dasharray: 3 3;
+}
+.pcb .fp.sel .courtyard {
+  stroke: var(--accent);
+  stroke-dasharray: 4 3;
+  fill: rgba(77, 163, 255, 0.07);
+}
+.pcb .silk {
+  fill: none;
+  stroke: #e8e8e0;
+  stroke-width: 1.2;
+}
+.pcb .silk-text,
+.pcb .ref {
+  fill: #e8e8e0;
+  font-family: var(--mono);
+  pointer-events: none;
+}
+.pcb .rats {
+  stroke: #e6e6e6;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+.pcb-stats b.ok {
+  color: var(--green);
+}
+.pcb-stats b.warn {
+  color: var(--orange);
+}
+.pcb-hint {
+  padding: 5px 30px;
+  border-top: 1px solid var(--border);
+}
