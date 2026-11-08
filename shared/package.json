@@ -1,0 +1,15 @@
+{
+  "name": "@ohmlab/shared",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Circuit model and MNA simulation engine shared by the Ohmlab frontend and backend.",
+  "type": "module",
+  "exports": {
+    "./model/*": "./src/model/*.ts",
+    "./engine/*": "./src/engine/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  }
+}

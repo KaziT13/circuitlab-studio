@@ -4,7 +4,7 @@ import { exportSpice, importSpice } from './spice';
 import { Simulator } from '../engine/simulator';
 import { autoPlace, padPositions, routeBoard } from './pcb';
 import { parseEng } from './units';
-import { segmentCurrents } from '../state/runtime';
+import { segmentCurrents } from '../engine/currents';
 
 describe('units', () => {
   it('parses engineering notation', () => {
