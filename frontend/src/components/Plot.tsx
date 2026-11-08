@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { formatEng } from '../model/units';
+import { formatEng } from '@ohmlab/shared/model/units';
 
 export interface PlotSeries {
   label: string;

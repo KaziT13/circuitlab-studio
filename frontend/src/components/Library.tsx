@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { DEFS, LIBRARY_ORDER } from '../model/library';
-import { CompType } from '../model/types';
+import { DEFS, LIBRARY_ORDER } from '@ohmlab/shared/model/library';
+import { CompType } from '@ohmlab/shared/model/types';
 import { useStore } from '../state/store';
 import { Symbol } from './Symbols';
 

@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { Circuit, Component, CompType, emptyCircuit, newId, Point, PropValue, snap, Wire } from '../model/types';
-import { DEFS, nextLabel, terminalPositions } from '../model/library';
-import type { SimSnapshot } from '../engine/simulator';
-import type { Issue } from '../engine/netlist';
+import { Circuit, Component, CompType, emptyCircuit, newId, Point, PropValue, snap, Wire } from '@ohmlab/shared/model/types';
+import { DEFS, nextLabel, terminalPositions } from '@ohmlab/shared/model/library';
+import type { SimSnapshot } from '@ohmlab/shared/engine/simulator';
+import type { Issue } from '@ohmlab/shared/engine/netlist';
 
 export type Selection = { kind: 'comp' | 'wire'; id: string } | null;
 export type Tool = 'select' | 'wire' | 'probe';

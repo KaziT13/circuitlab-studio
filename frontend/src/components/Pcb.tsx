@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../state/store';
-import { autoPlace, boardSize, CELL_MM, FOOTPRINTS, padPositions, Placement, routeBoard, RouteResult } from '../model/pcb';
-import { buildNetlist } from '../engine/netlist';
-import { DEFS } from '../model/library';
-import { rotatePoint } from '../model/types';
+import { autoPlace, boardSize, CELL_MM, FOOTPRINTS, padPositions, Placement, routeBoard, RouteResult } from '@ohmlab/shared/model/pcb';
+import { buildNetlist } from '@ohmlab/shared/engine/netlist';
+import { DEFS } from '@ohmlab/shared/model/library';
+import { rotatePoint } from '@ohmlab/shared/model/types';
 import { download } from './Toolbar';
 
 const S = 14; // px per cell

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { attachedWireEnds, useStore } from '../state/store';
-import { CompType, GRID, pkey, Point, snap } from '../model/types';
-import { DEFS, terminalPositions } from '../model/library';
-import { buildNetlist, pointOnSegment } from '../engine/netlist';
-import { formatEng } from '../model/units';
+import { CompType, GRID, pkey, Point, snap } from '@ohmlab/shared/model/types';
+import { DEFS, terminalPositions } from '@ohmlab/shared/model/library';
+import { buildNetlist, pointOnSegment } from '@ohmlab/shared/engine/netlist';
+import { formatEng } from '@ohmlab/shared/model/units';
 import { hitBox, Symbol } from './Symbols';
 import { runtime } from '../state/runtime';
-import { collectObstacles, smartRoute } from '../model/router';
+import { collectObstacles, smartRoute } from '@ohmlab/shared/model/router';
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean }

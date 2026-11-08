@@ -1,6 +1,6 @@
-import { Component } from '../model/types';
-import { LED_COLORS } from '../model/library';
-import type { Reading } from '../engine/elements';
+import { Component } from '@ohmlab/shared/model/types';
+import { LED_COLORS } from '@ohmlab/shared/model/library';
+import type { Reading } from '@ohmlab/shared/engine/elements';
 
 interface Props {
   c: Pick<Component, 'type' | 'props'>;
@@ -10,7 +10,7 @@ interface Props {
   pressed?: boolean;
 }
 
-export { hitBoxOf as hitBox } from '../model/hitbox';
+export { hitBoxOf as hitBox } from '@ohmlab/shared/model/hitbox';
 
 const Lead = ({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) => (
   <line x1={x1} y1={y1} x2={x2} y2={y2} />

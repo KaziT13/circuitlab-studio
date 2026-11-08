@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from './state/store';
-import { Toolbar, validateCircuit } from './components/Toolbar';
+import { Toolbar } from './components/Toolbar';
+import { validateCircuit } from '@ohmlab/shared/model/validate';
 import { Library } from './components/Library';
 import { Canvas, fitView } from './components/Canvas';
 import { Properties } from './components/Properties';

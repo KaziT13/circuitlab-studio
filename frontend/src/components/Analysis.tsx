@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { BottomTab, useStore } from '../state/store';
-import { Simulator } from '../engine/simulator';
-import { formatEng, parseEng } from '../model/units';
+import { Simulator } from '@ohmlab/shared/engine/simulator';
+import { formatEng, parseEng } from '@ohmlab/shared/model/units';
 import { Plot } from './Plot';
 import { Scope } from './Scope';
 import { Tutor } from './Tutor';
-import { exportSpice, importSpice } from '../model/spice';
+import { exportSpice, importSpice } from '@ohmlab/shared/model/spice';
 import { download } from './Toolbar';
 import { stopSim } from '../state/runtime';
 import { fitView } from './Canvas';

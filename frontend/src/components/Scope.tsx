@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { history, listSignals, runTransient, SignalInfo } from '../state/runtime';
-import { buildNetlist } from '../engine/netlist';
-import { formatEng, parseEng } from '../model/units';
+import { buildNetlist } from '@ohmlab/shared/engine/netlist';
+import { formatEng, parseEng } from '@ohmlab/shared/model/units';
 import { Plot, PlotSeries } from './Plot';
 import { download } from './Toolbar';
 

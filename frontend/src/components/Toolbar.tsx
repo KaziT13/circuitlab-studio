@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { pauseSim, resetSim, runSim, stepOnce, stepSize, stopSim } from '../state/runtime';
-import { EXAMPLES } from '../model/examples';
-import { Circuit, emptyCircuit } from '../model/types';
-import { formatEng, parseEng } from '../model/units';
+import { EXAMPLES } from '@ohmlab/shared/model/examples';
+import { Circuit, emptyCircuit } from '@ohmlab/shared/model/types';
+import { formatEng, parseEng } from '@ohmlab/shared/model/units';
+import { validateCircuit } from '@ohmlab/shared/model/validate';
 import { fitView } from './Canvas';
-import { DEFS } from '../model/library';
 
 const SAVE_KEY = 'ohmlab.saved.v1';
 
@@ -23,19 +23,6 @@ function writeSaved(v: Record<string, { circuit: Circuit; savedAt: number }>) {
   } catch {
     return false;
   }
-}
-
-export function validateCircuit(x: unknown): Circuit {
-  const c = x as Circuit;
-  if (!c || !Array.isArray(c.components) || !Array.isArray(c.wires)) throw new Error('File is not a Ohmlab circuit (missing components/wires).');
-  for (const k of c.components) {
-    if (!DEFS[k.type]) throw new Error(`Unknown component type "${k.type}".`);
-    if (typeof k.x !== 'number' || typeof k.y !== 'number') throw new Error(`Component ${k.label} has invalid coordinates.`);
-    k.props = { ...DEFS[k.type].defaults, ...(k.props ?? {}) };
-    k.rot = k.rot ?? 0;
-  }
-  for (const w of c.wires) if (!Array.isArray(w.points)) throw new Error('A wire has no points.');
-  return { name: c.name || 'Imported circuit', components: c.components, wires: c.wires };
 }
 
 export function download(name: string, text: string, mime = 'text/plain') {

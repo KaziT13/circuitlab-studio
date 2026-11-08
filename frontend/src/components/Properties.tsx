@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
-import { DEFS, ParamDef, terminalPositions } from '../model/library';
-import { formatEng, parseEng } from '../model/units';
-import { buildNetlist, Issue } from '../engine/netlist';
+import { DEFS, ParamDef, terminalPositions } from '@ohmlab/shared/model/library';
+import { formatEng, parseEng } from '@ohmlab/shared/model/units';
+import { buildNetlist, Issue } from '@ohmlab/shared/engine/netlist';
 import { SymbolIcon } from './Library';
-import { Component } from '../model/types';
+import { Component } from '@ohmlab/shared/model/types';
 import { runtime } from '../state/runtime';
-import { EXAMPLES } from '../model/examples';
+import { EXAMPLES } from '@ohmlab/shared/model/examples';
 
 function EngInput({ value, unit, onCommit, param }: { value: number; unit?: string; onCommit: (v: number) => void; param: ParamDef }) {
   const [text, setText] = useState(formatEng(value, unit ?? '', 4));

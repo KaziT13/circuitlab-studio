@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import Anthropic from '@anthropic-ai/sdk';
 import { useStore } from '../state/store';
-import { Simulator } from '../engine/simulator';
-import { explainCircuit } from '../engine/explain';
-import { exportSpice } from '../model/spice';
-import { EXAMPLES } from '../model/examples';
+import { Simulator } from '@ohmlab/shared/engine/simulator';
+import { explainCircuit } from '@ohmlab/shared/engine/explain';
+import { exportSpice } from '@ohmlab/shared/model/spice';
+import { EXAMPLES } from '@ohmlab/shared/model/examples';
 import { runtime } from '../state/runtime';
 
 const KEY_STORE = 'ohmlab.anthropicKey';
