@@ -2,28 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { pauseSim, resetSim, runSim, stepOnce, stepSize, stopSim } from '../state/runtime';
 import { EXAMPLES } from '@ohmlab/shared/model/examples';
-import { Circuit, emptyCircuit } from '@ohmlab/shared/model/types';
-import { formatEng, parseEng } from '@ohmlab/shared/model/units';
+import { emptyCircuit } from '@ohmlab/shared/model/types';
 import { validateCircuit } from '@ohmlab/shared/model/validate';
+import { api, SavedSummary } from '../api';
+import { formatEng, parseEng } from '@ohmlab/shared/model/units';
 import { fitView } from './Canvas';
-
-const SAVE_KEY = 'ohmlab.saved.v1';
-
-function readSaved(): Record<string, { circuit: Circuit; savedAt: number }> {
-  try {
-    return JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-function writeSaved(v: Record<string, { circuit: Circuit; savedAt: number }>) {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(v));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export function download(name: string, text: string, mime = 'text/plain') {
   const blob = new Blob([text], { type: mime });
@@ -73,9 +56,68 @@ function Menu({ label, children, wide }: { label: React.ReactNode; children: (cl
   );
 }
 
+/** Circuits saved in this browser by older versions, before saves moved to the server. */
+const LEGACY_SAVE_KEY = 'ohmlab.saved.v1';
+function readLegacySaves(): [string, unknown][] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LEGACY_SAVE_KEY) || '{}') as Record<string, { circuit?: unknown }>;
+    return Object.entries(raw).map(([name, v]) => [name, v?.circuit]);
+  } catch {
+    return [];
+  }
+}
+
 function LoadDialog({ onClose }: { onClose: () => void }) {
-  const [saved, setSaved] = useState(readSaved());
-  const names = Object.keys(saved).sort((a, b) => saved[b].savedAt - saved[a].savedAt);
+  const notify = useStore((s) => s.notify);
+  const [saved, setSaved] = useState<SavedSummary[] | null>(null);
+  const [error, setError] = useState('');
+  const [legacy, setLegacy] = useState(readLegacySaves);
+  const refresh = () => api.listCircuits().then(setSaved, (e: Error) => setError(e.message));
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const migrate = async () => {
+    let moved = 0;
+    for (const [name, circuit] of legacy) {
+      try {
+        await api.saveCircuit(name, validateCircuit(circuit));
+        moved++;
+      } catch (e) {
+        notify(`Could not move “${name}”: ${(e as Error).message}`, 'error');
+        return;
+      }
+    }
+    try {
+      localStorage.removeItem(LEGACY_SAVE_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+    setLegacy([]);
+    notify(`Moved ${moved} circuit${moved === 1 ? '' : 's'} to the server.`, 'success');
+    refresh();
+  };
+
+  const open = async (name: string) => {
+    try {
+      const { circuit } = await api.getCircuit(name);
+      stopSim();
+      useStore.getState().loadCircuit(circuit);
+      onClose();
+      requestAnimationFrame(fitView);
+    } catch (e) {
+      notify(`Could not open “${name}”: ${(e as Error).message}`, 'error');
+    }
+  };
+  const remove = async (name: string) => {
+    try {
+      await api.deleteCircuit(name);
+      setSaved((list) => list?.filter((x) => x.name !== name) ?? null);
+    } catch (e) {
+      notify(`Could not delete “${name}”: ${(e as Error).message}`, 'error');
+    }
+  };
+
   return (
     <div className="modal-back" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
@@ -83,32 +125,28 @@ function LoadDialog({ onClose }: { onClose: () => void }) {
           Open saved circuit
           <button onClick={onClose}>✕</button>
         </div>
-        {names.length === 0 && <div className="muted">No circuits saved in this browser yet. Use File → Save.</div>}
-        {names.map((n) => (
-          <div key={n} className="saved-row">
-            <button
-              className="link"
-              onClick={() => {
-                stopSim();
-                useStore.getState().loadCircuit(saved[n].circuit);
-                onClose();
-                requestAnimationFrame(fitView);
-              }}
-            >
-              {n}
+        {error && <div className="issue error">{error}</div>}
+        {legacy.length > 0 && !error && (
+          <div className="saved-row">
+            <span className="muted small">
+              {legacy.length} circuit{legacy.length === 1 ? ' is' : 's are'} saved only in this browser.
+            </span>
+            <button className="small-btn" onClick={migrate}>
+              Move to server
+            </button>
+          </div>
+        )}
+        {!error && saved === null && <div className="muted">Loading…</div>}
+        {saved?.length === 0 && <div className="muted">No circuits saved on the server yet. Use File → Save.</div>}
+        {saved?.map((s) => (
+          <div key={s.name} className="saved-row">
+            <button className="link" onClick={() => open(s.name)}>
+              {s.name}
             </button>
             <span className="muted small">
-              {saved[n].circuit.components.length} parts · {new Date(saved[n].savedAt).toLocaleString()}
+              {s.parts} parts · {new Date(s.savedAt).toLocaleString()}
             </span>
-            <button
-              className="danger small-btn"
-              onClick={() => {
-                const next = { ...saved };
-                delete next[n];
-                writeSaved(next);
-                setSaved(next);
-              }}
-            >
+            <button className="danger small-btn" onClick={() => remove(s.name)}>
               Delete
             </button>
           </div>
@@ -139,16 +177,17 @@ export function Toolbar() {
   const [hEditing, setHEditing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const save = () => {
+  const save = async () => {
     const c = useStore.getState().circuit;
     const name = prompt('Save circuit as:', c.name)?.trim();
     if (!name) return;
-    const all = readSaved();
-    all[name] = { circuit: { ...c, name }, savedAt: Date.now() };
-    if (writeSaved(all)) {
+    try {
+      await api.saveCircuit(name, c);
       useStore.getState().edit((x) => ({ ...x, name }), { history: false });
-      notify(`Saved “${name}” in this browser.`, 'success');
-    } else notify('Could not save: browser storage is unavailable.', 'error');
+      notify(`Saved “${name}”.`, 'success');
+    } catch (e) {
+      notify(`Could not save: ${(e as Error).message}`, 'error');
+    }
   };
 
   const sliderVal = Math.log10(speed);
@@ -177,7 +216,7 @@ export function Toolbar() {
             >
               New circuit
             </button>
-            <button onClick={() => (save(), close())}>Save to browser…</button>
+            <button onClick={() => (save(), close())}>Save…</button>
             <button onClick={() => (setLoadOpen(true), close())}>Open saved…</button>
             <hr />
             <button
