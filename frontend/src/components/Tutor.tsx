@@ -1,28 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
-import Anthropic from '@anthropic-ai/sdk';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { Simulator } from '@ohmlab/shared/engine/simulator';
 import { explainCircuit } from '@ohmlab/shared/engine/explain';
 import { exportSpice } from '@ohmlab/shared/model/spice';
 import { EXAMPLES } from '@ohmlab/shared/model/examples';
 import { runtime } from '../state/runtime';
-
-const KEY_STORE = 'ohmlab.anthropicKey';
-const MODEL = 'claude-opus-5-5';
-
-const SYSTEM = `You are the built-in electronics tutor of Ohmlab, a circuit simulator used by students and engineers.
-Each user turn includes the user's current circuit as a SPICE-style netlist plus the simulator's computed results (node voltages, component voltages, currents and power) and an automatic analysis.
-Explain why the circuit behaves the way it does, grounded in those numbers and in physics: Ohm's law, KCL/KVL, power, time constants, reactance, diode and transistor behaviour.
-Show the key equation with the actual values substituted when it helps. If the circuit has a problem (overcurrent, missing ground, floating parts, wrong polarity), say so and suggest a concrete fix with component values.
-Keep answers focused and readable: short paragraphs or bullet lists, plain-text math (e.g. I = V/R = 9 V / 6.5 kΩ = 1.38 mA). Don't invent measurements that aren't in the data.`;
-
-function readKey() {
-  try {
-    return localStorage.getItem(KEY_STORE) ?? '';
-  } catch {
-    return '';
-  }
-}
+import { api, streamTutor, TutorMessage } from '../api';
 
 interface ChatMsg {
   role: 'user' | 'assistant';
@@ -48,12 +31,17 @@ export function Tutor() {
     [analysis, circuit],
   );
 
-  const [apiKey, setApiKey] = useState(readKey());
+  const [tutor, setTutor] = useState<{ enabled: boolean; model: string } | null>(null);
+  useEffect(() => {
+    api.tutorStatus().then(setTutor, () => setTutor({ enabled: false, model: '' }));
+  }, []);
   const [question, setQuestion] = useState('');
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const apiHistory = useRef<Anthropic.Beta.BetaMessageParam[]>([]);
+  const apiHistory = useRef<TutorMessage[]>([]);
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
   const scroller = useRef<HTMLDivElement>(null);
 
   const context = () => {
@@ -89,37 +77,31 @@ ${auto}
   const ask = async (q: string) => {
     const text = q.trim();
     if (!text || busy) return;
-    if (!apiKey) {
-      setErr('Enter an Anthropic API key to use the AI tutor (the built-in analysis on the left works without one).');
+    if (!tutor?.enabled) {
+      setErr('The AI tutor is not available: the server has no Anthropic API key (the built-in analysis on the left still works).');
       return;
     }
     setErr('');
     setBusy(true);
     setQuestion('');
-    const userMsg: Anthropic.Beta.BetaMessageParam = { role: 'user', content: `${context()}\n\nQuestion: ${text}` };
+    const userMsg: TutorMessage = { role: 'user', content: `${context()}\n\nQuestion: ${text}` };
     const messages = [...apiHistory.current, userMsg];
     setChat((c) => [...c, { role: 'user', shown: text }, { role: 'assistant', shown: '' }]);
+    const ctl = new AbortController();
+    abort.current = ctl;
     try {
-      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-      const stream = client.beta.messages.stream({
-        model: MODEL,
-        max_tokens: 16000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'medium' },
-        system: SYSTEM,
-        messages,
-      } as Anthropic.Beta.Messages.MessageCreateParamsStreaming);
-      stream.on('text', (delta) => {
-        setChat((c) => {
-          const next = [...c];
-          next[next.length - 1] = { role: 'assistant', shown: next[next.length - 1].shown + delta };
-          return next;
-        });
-        scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+      const final = await streamTutor(messages, {
+        signal: ctl.signal,
+        onText: (delta) => {
+          setChat((c) => {
+            const next = [...c];
+            next[next.length - 1] = { role: 'assistant', shown: next[next.length - 1].shown + delta };
+            return next;
+          });
+          scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+        },
       });
-      const final = await stream.finalMessage();
-      if (final.stop_reason === 'refusal') {
+      if (final.stopReason === 'refusal') {
         setChat((c) => {
           const next = [...c];
           next[next.length - 1] = { role: 'assistant', shown: next[next.length - 1].shown + '\n\n[The tutor declined to answer this question.]' };
@@ -127,14 +109,9 @@ ${auto}
         });
       }
       // keep the full assistant content (including thinking blocks) so history stays append-only
-      apiHistory.current = [...messages, { role: 'assistant', content: final.content as Anthropic.Beta.BetaContentBlockParam[] }];
+      apiHistory.current = [...messages, { role: 'assistant', content: final.content }];
     } catch (e) {
-      let msg = (e as Error).message;
-      if (e instanceof Anthropic.AuthenticationError) msg = 'Invalid API key.';
-      else if (e instanceof Anthropic.RateLimitError) msg = 'Rate limited — wait a moment and try again.';
-      else if (e instanceof Anthropic.APIConnectionError) msg = 'Could not reach the Anthropic API (network error).';
-      else if (e instanceof Anthropic.APIError) msg = `API error ${e.status}: ${e.message}`;
-      setErr(msg);
+      if ((e as Error).name !== 'AbortError') setErr((e as Error).message);
       setChat((c) => c.slice(0, -2));
     } finally {
       setBusy(false);
@@ -161,24 +138,11 @@ ${auto}
       </div>
       <div className="tutor-col chat">
         <div className="section-title">
-          Ask the AI tutor <span className="muted small">Claude · {MODEL}</span>
+          Ask the AI tutor <span className="muted small">Claude{tutor?.model ? ` · ${tutor.model}` : ''}</span>
         </div>
-        <div className="key-row">
-          <input
-            type="password"
-            placeholder="Anthropic API key (sk-ant-…)"
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value);
-              try {
-                localStorage.setItem(KEY_STORE, e.target.value);
-              } catch {
-                /* storage unavailable */
-              }
-            }}
-          />
-          <span className="muted small">Stored only in this browser; requests go directly to api.anthropic.com.</span>
-        </div>
+        {tutor && !tutor.enabled && (
+          <div className="muted small">The AI tutor is off: start the server with ANTHROPIC_API_KEY set to enable it.</div>
+        )}
         <div className="chat-log" ref={scroller}>
           {chat.length === 0 && (
             <div className="suggest">
@@ -209,6 +173,7 @@ ${auto}
           </button>
           <button
             onClick={() => {
+              abort.current?.abort();
               apiHistory.current = [];
               setChat([]);
             }}
